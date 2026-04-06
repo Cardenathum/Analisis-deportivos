@@ -1,0 +1,981 @@
+import { useState, useRef, useEffect } from “react”;
+
+const SPORTS = [
+{ id: “nba”, label: “NBA”, emoji: “🏀” },
+{ id: “nfl”, label: “NFL”, emoji: “🏈” },
+{ id: “soccer”, label: “Fútbol / Soccer”, emoji: “⚽” },
+{ id: “mlb”, label: “MLB”, emoji: “⚾” },
+{ id: “nhl”, label: “NHL”, emoji: “🏒” },
+{ id: “tennis”, label: “Tenis”, emoji: “🎾” },
+{ id: “boxing”, label: “Boxeo / MMA”, emoji: “🥊” },
+{ id: “formula1”, label: “Fórmula 1”, emoji: “🏎️” },
+];
+
+const ANALYSIS_TYPES = [
+{ id: “partido”, label: “Análisis de Partido”, icon: “🎮” },
+{ id: “jugador”, label: “Análisis de Jugador”, icon: “👤” },
+{ id: “equipo”, label: “Análisis de Equipo”, icon: “🏆” },
+{ id: “temporada”, label: “Tendencias de Temporada”, icon: “📈” },
+{ id: “predictivo”, label: “Predicción & Apuestas”, icon: “🔮” },
+{ id: “lesiones”, label: “Estado Físico & Lesiones”, icon: “🩺” },
+{ id: “tactico”, label: “Análisis Táctico”, icon: “🧠” },
+{ id: “historico”, label: “Comparativa Histórica”, icon: “📚” },
+];
+
+const SYSTEM_PROMPT = `Eres SCOUT AI — el analista deportivo más completo y detallado del mundo. Hablas español perfectamente. Tu análisis es EXHAUSTIVO, PROFUNDO y PROFESIONAL.
+
+Para CADA consulta deportiva debes cubrir TODO lo siguiente (cuando aplique):
+
+🎯 ANÁLISIS TÉCNICO Y TÁCTICO
+
+- Formaciones, sistemas de juego, rotaciones
+- Patrones ofensivos y defensivos
+- Métricas avanzadas (PER, WAR, xG, DVOA, etc.)
+- Situaciones de juego específicas
+
+👤 ESTADO DE JUGADORES
+
+- Forma física actual y rendimiento reciente
+- Lesiones conocidas y disponibilidad
+- Carga de minutos y fatiga
+- Matchups individuales favorables/desfavorables
+- Estadísticas clave: últimos 5/10 juegos vs temporada
+
+📊 ESTADÍSTICAS PROFUNDAS
+
+- Stats básicas Y avanzadas
+- Comparativas vs liga, vs temporada pasada
+- Eficiencia, efectividad por situación
+- Stats en casa vs visitante, día vs noche, etc.
+
+🔮 FACTORES CONTEXTUALES
+
+- Motivación (playoffs, racha, récords en juego)
+- Historial head-to-head
+- Ventaja de local/visitante
+- Clima (cuando aplique)
+- Calendarios y cansancio por viaje
+- Dinámicas de vestidor y moral del equipo
+
+💰 PERSPECTIVA PARA APUESTAS (cuando se pida)
+
+- Líneas de handicap justificadas
+- Props de jugadores recomendados
+- Valor en el mercado
+- Tendencias de cubrimiento de spread
+
+🏆 VEREDICTO FINAL
+
+- Predicción clara con confianza %
+- Factores decisivos
+- Escenarios alternativos
+- Qué observar durante el partido
+
+Usa emojis para organizar. Sé ESPECÍFICO con nombres, números y datos. NO seas genérico. Da el análisis más completo posible.`;
+
+function TypewriterText({ text, speed = 8 }) {
+const [displayed, setDisplayed] = useState(””);
+const [done, setDone] = useState(false);
+const idx = useRef(0);
+
+useEffect(() => {
+setDisplayed(””);
+setDone(false);
+idx.current = 0;
+if (!text) return;
+const interval = setInterval(() => {
+if (idx.current < text.length) {
+setDisplayed(text.slice(0, idx.current + 1));
+idx.current++;
+} else {
+setDone(true);
+clearInterval(interval);
+}
+}, speed);
+return () => clearInterval(interval);
+}, [text]);
+
+return (
+<div className="analysis-text">
+{displayed}
+{!done && <span className="cursor">▍</span>}
+</div>
+);
+}
+
+function formatAnalysis(text) {
+// Convert markdown-like text to structured HTML
+return text
+.split(”\n”)
+.map((line, i) => {
+if (line.startsWith(”# “)) return `<h1 key="${i}">${line.slice(2)}</h1>`;
+if (line.startsWith(”## “)) return `<h2 key="${i}">${line.slice(3)}</h2>`;
+if (line.startsWith(”### “)) return `<h3 key="${i}">${line.slice(4)}</h3>`;
+if (line.startsWith(”**”) && line.endsWith(”**”)) return `<strong>${line.slice(2, -2)}</strong>`;
+if (line.trim() === “”) return “<br/>”;
+return line;
+})
+.join(”\n”);
+}
+
+export default function SportsAnalyst() {
+const [selectedSport, setSelectedSport] = useState(null);
+const [selectedType, setSelectedType] = useState(null);
+const [query, setQuery] = useState(””);
+const [analysis, setAnalysis] = useState(””);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState(””);
+const [history, setHistory] = useState([]);
+const [showHistory, setShowHistory] = useState(false);
+const analysisRef = useRef(null);
+const textareaRef = useRef(null);
+
+useEffect(() => {
+if (analysis && analysisRef.current) {
+analysisRef.current.scrollIntoView({ behavior: “smooth” });
+}
+}, [analysis]);
+
+const runAnalysis = async () => {
+if (!query.trim()) return;
+setLoading(true);
+setAnalysis(””);
+setError(””);
+
+```
+const contextParts = [];
+if (selectedSport) contextParts.push(`Deporte: ${selectedSport.label} ${selectedSport.emoji}`);
+if (selectedType) contextParts.push(`Tipo de análisis: ${selectedType.label} ${selectedType.icon}`);
+const fullQuery = contextParts.length
+  ? `[${contextParts.join(" | ")}]\n\n${query}`
+  : query;
+
+try {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: fullQuery }],
+    }),
+  });
+
+  const data = await response.json();
+  const result = data.content?.[0]?.text || "No se pudo obtener análisis.";
+  setAnalysis(result);
+  setHistory((prev) => [
+    { query, sport: selectedSport, type: selectedType, result, ts: new Date() },
+    ...prev.slice(0, 9),
+  ]);
+} catch (e) {
+  setError("Error conectando con el servidor de análisis. Intenta de nuevo.");
+} finally {
+  setLoading(false);
+}
+```
+
+};
+
+const handleKey = (e) => {
+if (e.key === “Enter” && (e.metaKey || e.ctrlKey)) runAnalysis();
+};
+
+const exampleQueries = [
+“Analiza el partido Lakers vs Warriors de hoy, estado de LeBron y las claves tácticas”,
+“Dame el análisis completo de Erling Haaland esta temporada en Premier League”,
+“¿Qué equipos de la NFL tienen mejor pronóstico para los playoffs?”,
+“Compara a Federer, Nadal y Djokovic históricamente en Grand Slams”,
+“Análisis profundo del Real Madrid para el clásico”,
+];
+
+return (
+<>
+<style>{`
+@import url(‘https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap’);
+
+```
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #080c10;
+      color: #e8edf2;
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+    }
+
+    .app {
+      min-height: 100vh;
+      background: #080c10;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,180,255,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 85% 90%, rgba(255,60,0,0.05) 0%, transparent 60%);
+      padding: 0 0 80px;
+    }
+
+    /* HEADER */
+    .header {
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+      background: rgba(8,12,16,0.92);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #00b4ff, #0066ff);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px rgba(0,180,255,0.3);
+    }
+
+    .logo-text {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 26px;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #00b4ff, #ffffff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-sub {
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: -4px;
+    }
+
+    .history-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.6);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .history-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      padding: 50px 24px 30px;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      background: rgba(0,180,255,0.1);
+      border: 1px solid rgba(0,180,255,0.25);
+      color: #00b4ff;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+    }
+
+    .hero-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(42px, 8vw, 80px);
+      letter-spacing: 3px;
+      line-height: 0.95;
+      margin-bottom: 16px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(90deg, #00b4ff 0%, #ffffff 50%, #ff6b00 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      color: rgba(255,255,255,0.45);
+      font-size: 15px;
+      max-width: 500px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* MAIN CONTAINER */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* SECTION LABEL */
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 12px;
+    }
+
+    /* SPORT SELECTOR */
+    .sport-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+
+    .sport-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      cursor: pointer;
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      transition: all 0.18s;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .sport-chip:hover {
+      border-color: rgba(0,180,255,0.3);
+      color: white;
+      background: rgba(0,180,255,0.05);
+    }
+
+    .sport-chip.active {
+      border-color: #00b4ff;
+      background: rgba(0,180,255,0.12);
+      color: #00b4ff;
+      box-shadow: 0 0 12px rgba(0,180,255,0.15);
+    }
+
+    /* ANALYSIS TYPE */
+    .type-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+
+    .type-card {
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.02);
+      cursor: pointer;
+      transition: all 0.18s;
+      text-align: left;
+    }
+
+    .type-card:hover {
+      border-color: rgba(255,107,0,0.3);
+      background: rgba(255,107,0,0.04);
+    }
+
+    .type-card.active {
+      border-color: #ff6b00;
+      background: rgba(255,107,0,0.1);
+      box-shadow: 0 0 14px rgba(255,107,0,0.12);
+    }
+
+    .type-icon { font-size: 20px; margin-bottom: 6px; }
+
+    .type-name {
+      font-size: 12px;
+      color: rgba(255,255,255,0.6);
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    .type-card.active .type-name { color: #ff9040; }
+
+    /* QUERY INPUT */
+    .query-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+
+    .query-box:focus-within {
+      border-color: rgba(0,180,255,0.3);
+      box-shadow: 0 0 20px rgba(0,180,255,0.06);
+    }
+
+    .query-textarea {
+      width: 100%;
+      background: none;
+      border: none;
+      outline: none;
+      color: #e8edf2;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      resize: none;
+      min-height: 80px;
+    }
+
+    .query-textarea::placeholder { color: rgba(255,255,255,0.2); }
+
+    .query-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .query-hint {
+      font-size: 11px;
+      color: rgba(255,255,255,0.2);
+    }
+
+    .analyze-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #0066ff, #00b4ff);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+
+    .analyze-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,102,255,0.35);
+    }
+
+    .analyze-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* EXAMPLES */
+    .examples {
+      margin-bottom: 32px;
+    }
+
+    .examples-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .example-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.02);
+      cursor: pointer;
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      transition: all 0.15s;
+      text-align: left;
+    }
+
+    .example-item:hover {
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.7);
+      border-color: rgba(255,255,255,0.1);
+      padding-left: 18px;
+    }
+
+    .example-item::before {
+      content: "→ ";
+      color: #00b4ff;
+    }
+
+    /* LOADING */
+    .loading-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .loading-orb {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 24px;
+      position: relative;
+    }
+
+    .orb-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: #00b4ff;
+      animation: spin 1s linear infinite;
+    }
+
+    .orb-ring:nth-child(2) {
+      inset: 8px;
+      border-top-color: #ff6b00;
+      animation-duration: 0.7s;
+      animation-direction: reverse;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      color: #00b4ff;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .loading-steps {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .loading-step {
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+    }
+
+    @keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+    /* ANALYSIS OUTPUT */
+    .analysis-container {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .analysis-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: rgba(0,180,255,0.05);
+      border-bottom: 1px solid rgba(0,180,255,0.12);
+    }
+
+    .analysis-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #00b4ff;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      background: #00b4ff;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    .copy-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.5);
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: 'DM Sans', sans-serif;
+      transition: all 0.15s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+
+    .analysis-body {
+      padding: 24px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .analysis-body::-webkit-scrollbar { width: 4px; }
+    .analysis-body::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+    .analysis-body::-webkit-scrollbar-thumb { background: rgba(0,180,255,0.3); border-radius: 2px; }
+
+    .analysis-text {
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.82);
+      white-space: pre-wrap;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .cursor {
+      display: inline-block;
+      color: #00b4ff;
+      animation: pulse 0.8s infinite;
+    }
+
+    /* ERROR */
+    .error-msg {
+      background: rgba(255,60,60,0.08);
+      border: 1px solid rgba(255,60,60,0.2);
+      border-radius: 10px;
+      padding: 14px 18px;
+      color: #ff6b6b;
+      font-size: 14px;
+      text-align: center;
+      margin-top: 16px;
+    }
+
+    /* HISTORY PANEL */
+    .history-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .history-panel {
+      width: min(420px, 100vw);
+      height: 100vh;
+      background: #0d1117;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .history-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px;
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .history-close {
+      float: right;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      cursor: pointer;
+      font-size: 20px;
+      margin-top: -4px;
+    }
+
+    .history-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .history-item:hover {
+      border-color: rgba(0,180,255,0.2);
+      background: rgba(0,180,255,0.04);
+    }
+
+    .history-q {
+      font-size: 13px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .history-meta {
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+    }
+
+    /* DIVIDER */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+      margin: 28px 0;
+    }
+
+    /* STATS BAR */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      padding: 14px 20px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-val {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      color: #00b4ff;
+      letter-spacing: 1px;
+    }
+
+    .stat-lbl {
+      font-size: 10px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .stat-sep {
+      width: 1px;
+      background: rgba(255,255,255,0.07);
+      align-self: stretch;
+    }
+  `}</style>
+
+  <div className="app">
+    {/* HEADER */}
+    <div className="header">
+      <div className="logo">
+        <div className="logo-icon">🏆</div>
+        <div>
+          <div className="logo-text">SCOUT AI</div>
+          <div className="logo-sub">Análisis Deportivo Total</div>
+        </div>
+      </div>
+      <button className="history-btn" onClick={() => setShowHistory(true)}>
+        📋 Historial ({history.length})
+      </button>
+    </div>
+
+    {/* HERO */}
+    <div className="hero">
+      <div className="hero-tag">⚡ Powered by Claude AI</div>
+      <h1 className="hero-title">
+        <span>EL ANALISTA QUE<br />TODO LO VE</span>
+      </h1>
+      <p className="hero-desc">
+        Análisis deportivo brutalmente detallado — jugadores, tácticas, estadísticas avanzadas, estado físico, predicciones y más.
+      </p>
+    </div>
+
+    <div className="container">
+
+      {/* STATS BAR */}
+      <div className="stats-bar">
+        <div className="stat-item">
+          <div className="stat-val">8</div>
+          <div className="stat-lbl">Deportes</div>
+        </div>
+        <div className="stat-sep" />
+        <div className="stat-item">
+          <div className="stat-val">8</div>
+          <div className="stat-lbl">Tipos de análisis</div>
+        </div>
+        <div className="stat-sep" />
+        <div className="stat-item">
+          <div className="stat-val">100+</div>
+          <div className="stat-lbl">Métricas avanzadas</div>
+        </div>
+        <div className="stat-sep" />
+        <div className="stat-item">
+          <div className="stat-val">{history.length}</div>
+          <div className="stat-lbl">Análisis realizados</div>
+        </div>
+      </div>
+
+      {/* SPORT SELECTOR */}
+      <div className="section-label">① Selecciona el deporte (opcional)</div>
+      <div className="sport-grid">
+        {SPORTS.map((s) => (
+          <button
+            key={s.id}
+            className={`sport-chip ${selectedSport?.id === s.id ? "active" : ""}`}
+            onClick={() => setSelectedSport(selectedSport?.id === s.id ? null : s)}
+          >
+            {s.emoji} {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ANALYSIS TYPE */}
+      <div className="section-label">② Tipo de análisis (opcional)</div>
+      <div className="type-grid">
+        {ANALYSIS_TYPES.map((t) => (
+          <button
+            key={t.id}
+            className={`type-card ${selectedType?.id === t.id ? "active" : ""}`}
+            onClick={() => setSelectedType(selectedType?.id === t.id ? null : t)}
+          >
+            <div className="type-icon">{t.icon}</div>
+            <div className="type-name">{t.label}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* QUERY */}
+      <div className="section-label">③ ¿Qué quieres analizar?</div>
+      <div className="query-box">
+        <textarea
+          ref={textareaRef}
+          className="query-textarea"
+          placeholder="Ej: Analiza el partido entre Lakers y Celtics de hoy. ¿Cómo está LeBron? ¿Cuáles son las claves tácticas? Dame predicción..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKey}
+          rows={4}
+        />
+        <div className="query-footer">
+          <span className="query-hint">⌘+Enter para analizar</span>
+          <button
+            className="analyze-btn"
+            onClick={runAnalysis}
+            disabled={loading || !query.trim()}
+          >
+            {loading ? "⏳ Analizando..." : "🔍 Analizar"}
+          </button>
+        </div>
+      </div>
+
+      {/* EXAMPLES */}
+      <div className="examples">
+        <div className="section-label" style={{ marginBottom: "8px" }}>💡 Ejemplos de consultas</div>
+        <div className="examples-list">
+          {exampleQueries.map((ex, i) => (
+            <button
+              key={i}
+              className="example-item"
+              onClick={() => {
+                setQuery(ex);
+                textareaRef.current?.focus();
+              }}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* LOADING */}
+      {loading && (
+        <div className="loading-state">
+          <div className="loading-orb">
+            <div className="orb-ring" />
+            <div className="orb-ring" />
+          </div>
+          <div className="loading-text">// procesando análisis completo...</div>
+          <div className="loading-steps">
+            <div className="loading-step">🔍 Evaluando estadísticas...</div>
+            <div className="loading-step">🧠 Aplicando modelos tácticos...</div>
+            <div className="loading-step">📊 Calculando métricas avanzadas...</div>
+            <div className="loading-step">🔮 Generando predicciones...</div>
+          </div>
+        </div>
+      )}
+
+      {/* ERROR */}
+      {error && <div className="error-msg">⚠️ {error}</div>}
+
+      {/* ANALYSIS OUTPUT */}
+      {analysis && !loading && (
+        <div className="analysis-container" ref={analysisRef}>
+          <div className="analysis-header">
+            <div className="analysis-badge">
+              <div className="badge-dot" />
+              SCOUT AI — ANÁLISIS COMPLETO
+              {selectedSport && ` · ${selectedSport.emoji} ${selectedSport.label}`}
+              {selectedType && ` · ${selectedType.icon} ${selectedType.label}`}
+            </div>
+            <button
+              className="copy-btn"
+              onClick={() => navigator.clipboard.writeText(analysis)}
+            >
+              📋 Copiar
+            </button>
+          </div>
+          <div className="analysis-body">
+            <TypewriterText text={analysis} speed={5} />
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  {/* HISTORY PANEL */}
+  {showHistory && (
+    <div className="history-overlay" onClick={() => setShowHistory(false)}>
+      <div className="history-panel" onClick={(e) => e.stopPropagation()}>
+        <button className="history-close" onClick={() => setShowHistory(false)}>✕</button>
+        <div className="history-title">HISTORIAL</div>
+        {history.length === 0 ? (
+          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "14px" }}>
+            Aún no hay análisis en el historial.
+          </p>
+        ) : (
+          history.map((item, i) => (
+            <div
+              key={i}
+              className="history-item"
+              onClick={() => {
+                setQuery(item.query);
+                setAnalysis(item.result);
+                setSelectedSport(item.sport);
+                setSelectedType(item.type);
+                setShowHistory(false);
+              }}
+            >
+              <div className="history-q">
+                {item.sport ? `${item.sport.emoji} ` : ""}
+                {item.query.slice(0, 80)}{item.query.length > 80 ? "..." : ""}
+              </div>
+              <div className="history-meta">
+                {item.ts.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                {item.type ? ` · ${item.type.icon} ${item.type.label}` : ""}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )}
+</>
+```
+
+);
+}
